@@ -5,7 +5,7 @@ extension Notification.Name {
     static let sensorSettingsDidChange = Notification.Name("sensorSettingsDidChangeNotification")
 }
 
-struct AppSettings {
+class AppSettings {
 
     static let shared = AppSettings() // Singleton para fácil acesso
 

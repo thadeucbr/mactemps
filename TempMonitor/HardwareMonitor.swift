@@ -109,9 +109,9 @@ class HardwareMonitor {
     // Baseado em https://github.com/beltex/SMCKit/blob/master/SMCKit/SMC.swift
     private struct SMCParamStruct {
         var key: UInt32                 // Chave do sensor (FourCharCode)
-        var vers = SMCVersion()         // Não usado para leitura simples de temperatura
-        var pLimitData = SMCPLimitData()// Não usado
-        var keyInfo = SMCKeyInfoData()  // Informações sobre a chave (tipo, tamanho)
+        var vers: SMCVersion = SMCVersion()         // Não usado para leitura simples de temperatura
+        var pLimitData: SMCPLimitData = SMCPLimitData()// Não usado
+        var keyInfo: SMCKeyInfoData = SMCKeyInfoData()  // Informações sobre a chave (tipo, tamanho)
         var padding: UInt16 = 0         // Preenchimento
         var result: UInt8 = 0           // Resultado da operação
         var status: UInt8 = 0           // Status da operação
@@ -192,7 +192,7 @@ class HardwareMonitor {
         return result
     }
 
-    func getSensorInfo(key: String) throws -> SMCKeyInfoData {
+    private func getSensorInfo(key: String) throws -> SMCKeyInfoData {
         var input = SMCParamStruct()
         input.key = FourCharCode(fromString: key)
         input.data8 = UInt8(kSMCGetKeyInfo) // kSMCGetKeyInfo (const 9)
@@ -271,11 +271,12 @@ class HardwareMonitor {
                 return Double(value) / 256.0
             }
         } else if dataTypeStr == "flt " && input.keyInfo.dataSize == 4 {
-             // O valor é um float de 32 bits. A ordem dos bytes pode precisar ser ajustada (big-endian)
-            var floatValue: Float32 = 0.0
-            withUnsafeMutableBytes(of: &floatValue) { pointer in
-                pointer.storeBytes(of: UInt32(bigEndian: Data(bytes: [input.bytes.0, input.bytes.1, input.bytes.2, input.bytes.3]).withUnsafeBytes { $0.load(as: UInt32.self) } ) , as: Float32.self)
-            }
+             // O valor é um float de 32 bits. A ordem dos bytes é big-endian.
+            let uint32Value = (UInt32(input.bytes.0) << 24) |
+                              (UInt32(input.bytes.1) << 16) |
+                              (UInt32(input.bytes.2) << 8)  |
+                              UInt32(input.bytes.3)
+            let floatValue = Float32(bitPattern: uint32Value)
             return Double(floatValue)
         } else {
             print("Formato de dados não suportado para \(key): \(dataTypeStr), tamanho: \(input.keyInfo.dataSize). Bytes: \(input.bytes.0),\(input.bytes.1)")
