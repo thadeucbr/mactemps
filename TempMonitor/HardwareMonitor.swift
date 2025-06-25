@@ -36,9 +36,11 @@ class HardwareMonitor {
     enum SMCError: Error {
         case serviceNotFound
         case connectionFailed
-        case keyNotFound(String)
-        case readFailed(String, kern_return_t)
+        case keyNotFound(String) // Usado quando a chave não é encontrada pelo SMC (e.g., result 0x84)
+        case readFailed(String, kern_return_t) // Usado para falhas na chamada IOKit ou erros SMC não específicos de 'não encontrado'
         case unknownFormat(String)
+        // Poderíamos adicionar um caso mais específico para erros SMC que não são 'keyNotFound'
+        // case smcOperationError(key: String, smcResult: UInt8)
     }
 
     init() throws {
@@ -200,37 +202,88 @@ class HardwareMonitor {
         // Selector para ler chave: kSMCReadKey (valor 5)
         // Selector para obter informações da chave: kSMCGetKeyInfo (valor 9)
 
-        let result = IOConnectCallStructMethod(connection,
+        // kernResult é o nome mais comum para o resultado de chamadas IOKit.
+        let kernResult = IOConnectCallStructMethod(connection,
                                                UInt32(selector), // Selector para a chamada SMC
                                                &inputStruct,     // Ponteiro para a estrutura de entrada
                                                inputSize,        // Tamanho da estrutura de entrada
                                                &outputStruct,    // Ponteiro para a estrutura de saída
                                                &outputSize)      // Tamanho da estrutura de saída
 
-        if result == kIOReturnSuccess {
+        // Log detalhado em callSMC
+        let keyStr = inputStruct.key.toString()
+        print("callSMC for key '\(keyStr)' (selector \(selector), input.data8: \(inputStruct.data8)):")
+        print("  IOConnectCallStructMethod kern_result: \(kernResult)")
+
+        if kernResult == kIOReturnSuccess {
+            // Esses logs só fazem sentido se a chamada IOConnect foi bem-sucedida
+            print("  outputStruct.result (SMC op result): \(outputStruct.result)")
+            let typeAsUInt32 = outputStruct.keyInfo.dataType
+        let typeStr = String(bytes: [
+            UInt8(truncatingIfNeeded: typeAsUInt32 >> 24),
+            UInt8(truncatingIfNeeded: typeAsUInt32 >> 16),
+            UInt8(truncatingIfNeeded: typeAsUInt32 >> 8),
+            UInt8(truncatingIfNeeded: typeAsUInt32)
+        ], encoding: .ascii) ?? "N/A"
+        print("  outputStruct.keyInfo: dataSize=\(outputStruct.keyInfo.dataSize), dataType=\(typeStr) (\(typeAsUInt32)), dataAttributes=\(outputStruct.keyInfo.dataAttributes)")
+        // Log dos primeiros bytes de outputStruct.bytes para depuração, se necessário
+        // print("  outputStruct.bytes (first 4): \(outputStruct.bytes.0), \(outputStruct.bytes.1), \(outputStruct.bytes.2), \(outputStruct.bytes.3)")
+        } else {
+            print("  IOConnectCallStructMethod failed (kern_result: \(kernResult)), no further outputStruct logs.")
+        }
+
+        if kernResult == kIOReturnSuccess {
             inputStruct.result = outputStruct.result // Copia o resultado da operação SMC
             inputStruct.keyInfo = outputStruct.keyInfo
             inputStruct.bytes = outputStruct.bytes
         }
-        return result
+        return kernResult // Retornar o kernResult da chamada IOConnectCallStructMethod
     }
 
     private func getSensorInfo(key: String) throws -> SMCKeyInfoData {
         var input = SMCParamStruct()
         input.key = FourCharCode(fromString: key)
-        input.data8 = UInt8(kSMCGetKeyInfo) // kSMCGetKeyInfo (const 9)
+        input.data8 = UInt8(kSMCGetKeyInfo) // kSMCGetKeyInfo (9)
 
-        let kernResult = callSMC(inputStruct: &input, selector: 2) // kSMCUserClientSmc Rautine
+        print("getSensorInfo for key '\(key)': Attempting callSMC (selector 2, data8: \(input.data8))")
+        let kernResult = callSMC(inputStruct: &input, selector: 2)
+
+        // Log após callSMC em getSensorInfo
+        print("getSensorInfo for key '\(key)' (after callSMC):")
+        print("  kern_result from callSMC: \(kernResult)")
+
+        if kernResult == kIOReturnSuccess {
+            // Somente logar input.result e input.keyInfo se kernResult da chamada IOKit foi sucesso.
+            let typeAsUInt32_input = input.keyInfo.dataType
+            let typeStr_input = String(bytes: [
+                UInt8(truncatingIfNeeded: typeAsUInt32_input >> 24),
+                UInt8(truncatingIfNeeded: typeAsUInt32_input >> 16),
+                UInt8(truncatingIfNeeded: typeAsUInt32_input >> 8),
+                UInt8(truncatingIfNeeded: typeAsUInt32_input)
+            ], encoding: .ascii) ?? "N/A"
+            print("  input.result (SMC op result): \(input.result)")
+            print("  input.keyInfo: dataSize=\(input.keyInfo.dataSize), dataType=\(typeStr_input) (\(typeAsUInt32_input)), dataAttributes=\(input.keyInfo.dataAttributes)")
+        }
 
         if kernResult != kIOReturnSuccess {
-            throw SMCError.readFailed("getSensorInfo (callSMC)", kernResult)
+            // Este erro é sobre a falha da chamada IOConnectCallStructMethod em si
+            throw SMCError.readFailed("getSensorInfo (IOConnectCallStructMethod failed for key \(key))", kernResult)
         }
-        if input.result != KSMCSuccess { // KSMCSuccess é 0
-             throw SMCError.keyNotFound("getSensorInfo, key: \(key), smc result: \(input.result)")
+
+        // Se a chamada IOKit (kernResult) foi sucesso, agora verificamos o resultado da operação SMC (input.result)
+        if input.result == KSMCSensorKeyNotFound {
+             print("SMC reported Key '\(key)' not found (SMC result: \(input.result)).")
+             throw SMCError.keyNotFound("Sensor key '\(key)' not found by SMC (SMC result code: \(input.result)).")
         }
+        if input.result != KSMCSuccess { // Outro erro da operação SMC
+             print("SMC reported an error for key '\(key)' (SMC result: \(input.result))")
+             // Usar um kern_return_t genérico como kIOReturnInternalError para o segundo parâmetro de readFailed,
+             // já que input.result (UInt8) não é um kern_return_t. A mensagem de erro contém o código SMC real.
+             throw SMCError.readFailed("SMC operation failed for key '\(key)' (SMC result code: \(input.result))", kIOReturnInternalError)
+        }
+        // Se kernResult == kIOReturnSuccess E input.result == KSMCSuccess (0), então a keyInfo deve ser válida.
         return input.keyInfo
     }
-
 
     func readTemperature(key: String) throws -> Double {
         guard connection != 0 else {
@@ -238,76 +291,69 @@ class HardwareMonitor {
             throw SMCError.connectionFailed
         }
 
-        var input = SMCParamStruct()
-        input.key = FourCharCode(fromString: key)
-
-        // Primeiro, obtemos informações sobre a chave para saber o tipo e tamanho
+        // 1. Obter informações (tipo, tamanho) da chave SMC
+        let fetchedKeyInfo: SMCKeyInfoData
         do {
-            let keyInfo = try getSensorInfo(key: key)
-            input.keyInfo.dataSize = keyInfo.dataSize
-            input.keyInfo.dataType = keyInfo.dataType
+            fetchedKeyInfo = try getSensorInfo(key: key)
+            // Se getSensorInfo foi bem-sucedido, fetchedKeyInfo contém o dataType e dataSize corretos.
         } catch {
-            // Se getSensorInfo falhar, não podemos prosseguir
-            print("Falha ao obter informações para a chave \(key): \(error)")
-            throw error // Re-throw o erro de getSensorInfo
+            print("readTemperature: Falha ao obter informações para a chave '\(key)' via getSensorInfo. Erro: \(error)")
+            throw error // Re-lança o erro de getSensorInfo (pode ser keyNotFound, readFailed, etc.)
         }
 
-        // input.data8 = UInt8(kSMCReadKey) // kSMCReadKey (const 5)
-        // A chamada de leitura usa o selector 2 (kSMCUserClientSmc) e o data8 como sub-comando.
-        input.data8 = UInt8(kSMCReadKey)
+        // 2. Preparar a estrutura SMCParamStruct para a operação de LEITURA (kSMCReadKey)
+        var readInput = SMCParamStruct() // Nova struct para a operação de leitura
+        readInput.key = FourCharCode(fromString: key)
+        readInput.keyInfo.dataSize = fetchedKeyInfo.dataSize // Usar o dataSize obtido!
+        readInput.keyInfo.dataType = fetchedKeyInfo.dataType // Usar o dataType obtido!
+        readInput.data8 = UInt8(kSMCReadKey) // Especifica a operação de leitura para o selector 2
 
+        let fetchedDataTypeStr = fetchedKeyInfo.dataType.toString() // Para logging
+        print("readTemperature for key '\(key)': Attempting callSMC (selector 2, data8: kSMCReadKey=\(kSMCReadKey)) with keyInfo: size=\(readInput.keyInfo.dataSize), type=\(fetchedDataTypeStr)")
 
-        let kernResult = callSMC(inputStruct: &input, selector: 2) // kSMCUserClientSmc Routine
+        // 3. Chamar SMC para LER os bytes da chave
+        let kernResultRead = callSMC(inputStruct: &readInput, selector: 2)
 
-        if kernResult != kIOReturnSuccess {
-            print("Erro ao ler chave SMC \(key) (chamada SMC). Código: \(kernResult)")
-            throw SMCError.readFailed(key, kernResult)
+        // 4. Verificar resultados da chamada IOKit e da operação SMC de leitura
+        if kernResultRead != kIOReturnSuccess {
+            print("Erro na chamada IOConnectCallStructMethod ao ler chave SMC '\(key)'. Código IOKit: \(kernResultRead)")
+            throw SMCError.readFailed("Read operation (IOConnectCallStructMethod for key '\(key)')", kernResultRead)
         }
 
-        if input.result != KSMCSuccess { // KSMCSuccess é 0
-            // Este erro é mais específico do SMC, indicando que a chave pode não existir ou não ser legível
-            print("Erro específico do SMC ao ler a chave \(key). Resultado SMC: \(input.result)")
-            throw SMCError.keyNotFound(key)
+        if readInput.result == KSMCSensorKeyNotFound {
+             print("SMC reported Key '\(key)' not found during read operation (SMC result: \(readInput.result)).")
+             throw SMCError.keyNotFound("Sensor key '\(key)' not found by SMC during read (SMC result code: \(readInput.result)).")
+        }
+        if readInput.result != KSMCSuccess { // Outro erro SMC
+            print("Erro específico do SMC ao ler a chave '\(key)'. Resultado SMC: \(readInput.result)")
+            throw SMCError.readFailed("SMC read operation failed for key '\(key)' (SMC result code: \(readInput.result))", kIOReturnInternalError)
         }
 
+        // 5. Interpretar os bytes lidos (readInput.bytes) usando fetchedKeyInfo
+        // Usar fetchedKeyInfo para dataTypeStr e dataSize, pois são os valores autoritativos.
+        let dataTypeStr = fetchedKeyInfo.dataType.toString() // Reutiliza a string do tipo de dado
+        let dataSize = fetchedKeyInfo.dataSize
 
-        // Verificar o tipo de dado retornado pela keyInfo
-        // Tipos comuns: "flt ", "sp78", "ui16", "ui32"
-        // sp78 é um formato de ponto fixo (signed, 7 bits inteiros, 8 bits fracionários)
+        print("Interpreting key '\(key)': dataType='\(dataTypeStr)', dataSize=\(dataSize). Bytes from SMC: \(readInput.bytes.0),\(readInput.bytes.1),\(readInput.bytes.2),\(readInput.bytes.3)...")
 
-        // Simplificando a criação de dataTypeStr
-        let dt = input.keyInfo.dataType
-        let byte1 = UInt8(truncatingIfNeeded: dt >> 24)
-        let byte2 = UInt8(truncatingIfNeeded: dt >> 16)
-        let byte3 = UInt8(truncatingIfNeeded: dt >> 8)
-        let byte4 = UInt8(truncatingIfNeeded: dt)
-        let dataTypeBytes: [UInt8] = [byte1, byte2, byte3, byte4]
-        let dataTypeStr = String(bytes: dataTypeBytes, encoding: .ascii) ?? "----"
-
-        if dataTypeStr == "sp78" && input.keyInfo.dataSize == 2 {
-            // O valor está em input.bytes
-            // sp78 é signed, 7 bits inteiros, 8 bits fracionários
-            let value = (Int(input.bytes.0) * 256 + Int(input.bytes.1)) // Combina os dois bytes
-            // Se o bit mais significativo (bit 15) for 1, o número é negativo
-            if (value & 0x8000) != 0 { // Checa o bit de sinal
-                 // Converte para complemento de dois se for negativo
-                return Double(Int16(bitPattern: UInt16(value))) / 256.0
-            } else {
-                return Double(value) / 256.0
-            }
-        } else if dataTypeStr == "flt " && input.keyInfo.dataSize == 4 {
-             // O valor é um float de 32 bits. A ordem dos bytes é big-endian.
-            // Simplificando a criação de uint32Value
-            let b0 = UInt32(input.bytes.0)
-            let b1 = UInt32(input.bytes.1)
-            let b2 = UInt32(input.bytes.2)
-            let b3 = UInt32(input.bytes.3)
+        if dataTypeStr == "sp78" && dataSize == 2 {
+            // sp78: signed, 7 bits inteiros, 8 bits fracionários. Big-endian.
+            // Byte 0 é o mais significativo.
+            let value = (Int16(readInput.bytes.0) << 8) | Int16(readInput.bytes.1) // Combina os dois bytes em Int16
+            return Double(value) / 256.0
+        } else if dataTypeStr == "flt " && dataSize == 4 {
+            // flt: float de 32 bits. Big-endian.
+            let b0 = UInt32(readInput.bytes.0)
+            let b1 = UInt32(readInput.bytes.1)
+            let b2 = UInt32(readInput.bytes.2)
+            let b3 = UInt32(readInput.bytes.3)
             let uint32Value = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
             let floatValue = Float32(bitPattern: uint32Value)
             return Double(floatValue)
         } else {
-            print("Formato de dados não suportado para \(key): \(dataTypeStr), tamanho: \(input.keyInfo.dataSize). Bytes: \(input.bytes.0),\(input.bytes.1)")
-            throw SMCError.unknownFormat("Chave: \(key), Formato: \(dataTypeStr), Tamanho: \(input.keyInfo.dataSize)")
+            // Se dataTypeStr for algo como "\0\0\0\0" ou dataSize for 0, cairá aqui.
+            print("Formato de dados não suportado ou inválido para '\(key)': dataType='\(dataTypeStr)', dataSize=\(dataSize). Bytes: \(readInput.bytes.0),\(readInput.bytes.1)")
+            throw SMCError.unknownFormat("Chave: \(key), Formato: \(dataTypeStr), Tamanho: \(dataSize)")
         }
     }
 
