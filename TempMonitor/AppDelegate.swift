@@ -27,7 +27,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             if let item = statusItem, let manager = menuManager {
                 statusItemView = StatusItemView(statusItem: item)
-                item.view = statusItemView
+                // item.view = statusItemView // Depreciado
+                if let button = item.button {
+                    button.addSubview(statusItemView!) // Adiciona como subview do botão
+                    // Ajusta o frame da statusItemView para preencher o botão, se necessário
+                    // statusItemView?.frame = button.bounds // Ou defina constraints
+                }
                 item.menu = manager.createMenu()
 
                 // Define o layout inicial da StatusItemView com base no AppSettings
