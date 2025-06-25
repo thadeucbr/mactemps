@@ -121,8 +121,9 @@ class StatusItemView: NSView {
             let itemHeight = bounds.height / 2
             for (index, tempInfo) in temperaturesToDisplay.prefix(4).enumerated() {
                 let x = (index % 2 == 0) ? 0 : itemWidth
-                let yOffset = (bounds.height - (fontSize * 2 + 2)) / 2 // Centraliza verticalmente o bloco 2x2
-                let y = (index < 2) ? itemHeight + yOffset - ( (itemHeight - fontSize) / 2 + fontSize ) : yOffset + ( (itemHeight - fontSize) / 2 )
+                // let yOffset = (bounds.height - (fontSize * 2 + 2)) / 2 // Centraliza verticalmente o bloco 2x2
+                // let y = (index < 2) ? itemHeight + yOffset - ( (itemHeight - fontSize) / 2 + fontSize ) : yOffset + ( (itemHeight - fontSize) / 2 )
+                // A variável 'y' e 'yOffset' não estavam sendo usadas para calcular textRect.y, que usa adjustedY.
 
                 // Ajuste fino do y para alinhar melhor as duas linhas
                 let adjustedY : CGFloat

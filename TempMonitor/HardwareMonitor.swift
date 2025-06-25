@@ -47,7 +47,7 @@ class HardwareMonitor {
 
         // Encontrar o serviço AppleSMC
         let matchingDictionary = IOServiceMatching("AppleSMC")
-        result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDictionary, &iterator)
+        result = IOServiceGetMatchingServices(kIOMainPortDefault, matchingDictionary, &iterator)
 
         if result != kIOReturnSuccess {
             print("Erro: Serviço AppleSMC não encontrado. Código: \(result)")
@@ -61,7 +61,7 @@ class HardwareMonitor {
             print("Erro: Nenhum dispositivo AppleSMC encontrado.")
             // Tentar uma fonte alternativa se a primária falhar
             let matchingAlt = IOServiceNameMatching(SMCOpenSource)
-            result = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingAlt, &iterator)
+            result = IOServiceGetMatchingServices(kIOMainPortDefault, matchingAlt, &iterator)
             if result != kIOReturnSuccess {
                 print("Erro: Serviço \(SMCOpenSource) não encontrado. Código: \(result)")
                 throw SMCError.serviceNotFound
@@ -118,6 +118,29 @@ class HardwareMonitor {
         var data8: UInt8 = 0            // Dado (se for 1 byte)
         var data32: UInt32 = 0          // Dado (se for 4 bytes)
         var bytes: SMCBytes = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) // Buffer para dados (até 32 bytes)
+
+        // Inicializador explícito para fornecer valores padrão
+        init(key: UInt32 = 0,
+             vers: SMCVersion = SMCVersion(),
+             pLimitData: SMCPLimitData = SMCPLimitData(),
+             keyInfo: SMCKeyInfoData = SMCKeyInfoData(),
+             padding: UInt16 = 0,
+             result: UInt8 = 0,
+             status: UInt8 = 0,
+             data8: UInt8 = 0,
+             data32: UInt32 = 0,
+             bytes: SMCBytes = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)) {
+            self.key = key
+            self.vers = vers
+            self.pLimitData = pLimitData
+            self.keyInfo = keyInfo
+            self.padding = padding
+            self.result = result
+            self.status = status
+            self.data8 = data8
+            self.data32 = data32
+            self.bytes = bytes
+        }
     }
 
     private struct SMCVersion {
@@ -252,12 +275,14 @@ class HardwareMonitor {
         // Tipos comuns: "flt ", "sp78", "ui16", "ui32"
         // sp78 é um formato de ponto fixo (signed, 7 bits inteiros, 8 bits fracionários)
 
-        let dataTypeStr = String(bytes: [
-            UInt8(input.keyInfo.dataType >> 24 & 0xFF),
-            UInt8(input.keyInfo.dataType >> 16 & 0xFF),
-            UInt8(input.keyInfo.dataType >> 8 & 0xFF),
-            UInt8(input.keyInfo.dataType & 0xFF)
-        ], encoding: .ascii) ?? "----"
+        // Simplificando a criação de dataTypeStr
+        let dt = input.keyInfo.dataType
+        let byte1 = UInt8(truncatingIfNeeded: dt >> 24)
+        let byte2 = UInt8(truncatingIfNeeded: dt >> 16)
+        let byte3 = UInt8(truncatingIfNeeded: dt >> 8)
+        let byte4 = UInt8(truncatingIfNeeded: dt)
+        let dataTypeBytes: [UInt8] = [byte1, byte2, byte3, byte4]
+        let dataTypeStr = String(bytes: dataTypeBytes, encoding: .ascii) ?? "----"
 
         if dataTypeStr == "sp78" && input.keyInfo.dataSize == 2 {
             // O valor está em input.bytes
@@ -272,10 +297,12 @@ class HardwareMonitor {
             }
         } else if dataTypeStr == "flt " && input.keyInfo.dataSize == 4 {
              // O valor é um float de 32 bits. A ordem dos bytes é big-endian.
-            let uint32Value = (UInt32(input.bytes.0) << 24) |
-                              (UInt32(input.bytes.1) << 16) |
-                              (UInt32(input.bytes.2) << 8)  |
-                              UInt32(input.bytes.3)
+            // Simplificando a criação de uint32Value
+            let b0 = UInt32(input.bytes.0)
+            let b1 = UInt32(input.bytes.1)
+            let b2 = UInt32(input.bytes.2)
+            let b3 = UInt32(input.bytes.3)
+            let uint32Value = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
             let floatValue = Float32(bitPattern: uint32Value)
             return Double(floatValue)
         } else {
