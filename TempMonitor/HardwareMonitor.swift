@@ -117,7 +117,7 @@ class HardwareMonitor {
         var status: UInt8 = 0           // Status da operação
         var data8: UInt8 = 0            // Dado (se for 1 byte)
         var data32: UInt32 = 0          // Dado (se for 4 bytes)
-        var bytes = SMCBytes()          // Buffer para dados (até 32 bytes)
+        var bytes: SMCBytes = SMCBytes()          // Buffer para dados (até 32 bytes)
     }
 
     private struct SMCVersion {
