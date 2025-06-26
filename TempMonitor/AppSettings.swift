@@ -80,18 +80,57 @@ class AppSettings {
     // MARK: - Default Sensor Assignments
 
     // Define os sensores padrão se nenhum estiver configurado
-    func registerDefaultSensorKeys() {
+    // Agora precisa de acesso ao HardwareMonitor para obter sensores disponíveis.
+    // Isso é um pouco problemático para uma classe de configurações puras.
+    // Idealmente, o AppDelegate chamaria isso e passaria os sensores disponíveis.
+    // Por enquanto, vamos assumir que podemos acessá-los, mas isso pode precisar de refatoração.
+    func registerDefaultSensorKeys(availableSensors: [Sensor]) {
         // Padrão: Q1=CPU Proximity, Q2=GPU Diode. Q3 e Q4 vazios.
         if UserDefaults.standard.string(forKey: Keys.sensorKeyForQuadrant1) == nil &&
            UserDefaults.standard.string(forKey: Keys.sensorKeyForQuadrant2) == nil &&
            UserDefaults.standard.string(forKey: Keys.sensorKeyForQuadrant3) == nil &&
            UserDefaults.standard.string(forKey: Keys.sensorKeyForQuadrant4) == nil {
 
-            print("AppSettings: Registrando chaves de sensores padrão.")
-            // Tenta pegar as chaves reais dos sensores conhecidos (usando nomes traduzidos)
-            let defaultQ1Key = HardwareMonitor.knownSensors.first { $0.name.contains("Proximidade da CPU") }?.key ?? "TC0P"
-            let defaultQ2Key = HardwareMonitor.knownSensors.first { $0.name.contains("Diodo da GPU") }?.key ?? "TG0D"
+            print("AppSettings: Registrando chaves de sensores padrão com base nos sensores disponíveis.")
 
+            // Tenta encontrar os sensores preferidos na lista de disponíveis
+            let preferredQ1Name = "Proximidade da CPU"
+            let preferredQ2Name = "Diodo da GPU"
+
+            var defaultQ1Key: String? = availableSensors.first { $0.name == preferredQ1Name }?.key
+            var defaultQ2Key: String? = availableSensors.first { $0.name == preferredQ2Name }?.key
+
+            // Fallback se os preferidos não estiverem disponíveis
+            if defaultQ1Key == nil && !availableSensors.isEmpty {
+                defaultQ1Key = availableSensors[0].key // Pega o primeiro disponível
+            }
+            if defaultQ2Key == nil && availableSensors.count > 1 {
+                // Tenta pegar um segundo sensor diferente do Q1, se possível
+                if defaultQ1Key != nil && availableSensors[1].key != defaultQ1Key {
+                    defaultQ2Key = availableSensors[1].key
+                } else if availableSensors.count > 1 && availableSensors[0].key != defaultQ1Key {
+                     defaultQ2Key = availableSensors[0].key // Se Q1 pegou o primeiro, e há outro.
+                } else if availableSensors.count > 1 { // Pega o segundo se Q1 não for o primeiro
+                     defaultQ2Key = availableSensors[1].key
+                }
+                 // Se Q1 pegou o primeiro e só há um sensor, Q2 ficará nil.
+            }
+            // Garante que Q1 e Q2 não sejam o mesmo sensor se ambos foram definidos por fallback
+            if defaultQ1Key != nil && defaultQ1Key == defaultQ2Key {
+                if availableSensors.count > 1 { // Se há outro sensor para Q2
+                    let q1Sensor = availableSensors.first { $0.key == defaultQ1Key }
+                    if let nextSensor = availableSensors.first(where: { $0.key != q1Sensor?.key }) {
+                        defaultQ2Key = nextSensor.key
+                    } else {
+                        defaultQ2Key = nil // Não há outro sensor diferente para Q2
+                    }
+                } else {
+                    defaultQ2Key = nil // Só um sensor disponível, Q2 fica sem.
+                }
+            }
+
+
+            print("AppSettings: Padrão Q1: \(defaultQ1Key ?? "Nenhum"), Padrão Q2: \(defaultQ2Key ?? "Nenhum")")
             setSensorKey(defaultQ1Key, forQuadrant: 1)
             setSensorKey(defaultQ2Key, forQuadrant: 2)
             setSensorKey(nil, forQuadrant: 3) // Nenhum por padrão

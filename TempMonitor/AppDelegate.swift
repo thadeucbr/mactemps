@@ -11,13 +11,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        // Registra os sensores padrão (se ainda não estiverem definidos)
-        AppSettings.shared.registerDefaultSensorKeys()
-
-        // Tenta inicializar o HardwareMonitor
+        // Tenta inicializar o HardwareMonitor PRIMEIRO, pois precisamos dos sensores disponíveis
+        // para registrar os padrões em AppSettings.
         do {
             hardwareMonitor = try HardwareMonitor()
             print("HardwareMonitor inicializado com sucesso.")
+
+            // Agora que o monitor está pronto, obtenha os sensores disponíveis
+            let availableSensors = hardwareMonitor!.getAvailableSensors()
+            print("AppDelegate: \(availableSensors.count) sensores disponíveis detectados.")
+
+            // Registra os sensores padrão (se ainda não estiverem definidos),
+            // passando os sensores disponíveis.
+            AppSettings.shared.registerDefaultSensorKeys(availableSensors: availableSensors)
 
             // Configura o MenuManager
             menuManager = MenuManager(appDelegate: self)
@@ -126,19 +132,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         for (index, sensorKey) in activeSensorKeys.enumerated() {
             if let key = sensorKey, !key.isEmpty {
-                if let sensor = HardwareMonitor.knownSensors.first(where: { $0.key == key }) {
+                // Usar potentialSensors para encontrar o nome do sensor, pois um sensor salvo
+                // pode não estar mais na lista 'availableSensors' retornada por getAvailableSensors()
+                // se ele falhar temporariamente. A lista de 'availableSensors' é usada principalmente
+                // para popular as Preferências.
+                let sensorInfo = HardwareMonitor.potentialSensors.first { $0.key == key }
+
+                if let currentSensor = sensorInfo { // Encontrou na lista de potenciais
                     do {
-                        let temp = try monitor.readTemperature(key: sensor.key)
+                        let temp = try monitor.readTemperature(key: currentSensor.key)
                         let tempString = "\(String(format: "%.0f", temp))°"
                         tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: tempString))
-                        print("Lido: \(sensor.name) (\(key)): \(tempString) para slot \(index)")
+                        print("Lido: \(currentSensor.name) (\(key)): \(tempString) para slot \(index)")
                     } catch {
-                        print("Falha ao ler \(sensor.name) (\(key)) para slot \(index): \(error)")
+                        print("Falha ao ler \(currentSensor.name) (\(key)) para slot \(index): \(error)")
+                        // Se a leitura falhar, mas a chave é conhecida, mostrar "ER°"
                         tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "ER°"))
                     }
                 } else {
-                    print("Sensor com chave '\(key)' não encontrado na lista knownSensors para slot \(index).")
-                    tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "??°")) // Chave não encontrada
+                    // A chave salva não corresponde a nenhum sensor em potentialSensors.
+                    // Isso é mais sério, talvez um erro de digitação na chave ou dados antigos.
+                    print("Sensor com chave '\(key)' não encontrado na lista potentialSensors para slot \(index).")
+                    tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "??°"))
                 }
             } else {
                 // Nenhuma chave de sensor configurada para este slot

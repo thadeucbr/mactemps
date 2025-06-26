@@ -12,7 +12,9 @@ class HardwareMonitor {
 
     // Lista de sensores conhecidos
     // Referência para chaves comuns: https://github.com/exelban/stats/blob/master/shared/modules/sensors/types.swift
-    static let knownSensors: [Sensor] = [
+    // Esta lista representa todos os sensores que *potencialmente* podem existir.
+    // A lista de sensores *realmente disponíveis* será determinada em tempo de execução.
+    static let potentialSensors: [Sensor] = [
         Sensor(key: "TC0P", name: "Proximidade da CPU"),
         Sensor(key: "TC0D", name: "Diodo da CPU"),
         Sensor(key: "TC0H", name: "Dissipador da CPU"),
@@ -370,6 +372,30 @@ class HardwareMonitor {
     private let KSMCSuccess: UInt8 = 0 // Sucesso
     private let KSMCSensorKeyNotFound: UInt8 = 0x84 // Chave não encontrada
     // Outros códigos de erro SMC existem, 0x80 a 0xff geralmente são erros.
+
+    // Método para obter apenas os sensores que estão realmente disponíveis e legíveis
+    func getAvailableSensors() -> [Sensor] {
+        var available: [Sensor] = []
+        print("HardwareMonitor: Iniciando varredura de sensores disponíveis...")
+        for sensor in HardwareMonitor.potentialSensors {
+            do {
+                // Tenta ler a temperatura. Se não houver erro, o sensor está disponível.
+                _ = try readTemperature(key: sensor.key)
+                available.append(sensor)
+                print("  Sensor '\(sensor.name)' (\(sensor.key)) está disponível.")
+            } catch SMCError.keyNotFound {
+                print("  Sensor '\(sensor.name)' (\(sensor.key)) não encontrado (keyNotFound).")
+            } catch SMCError.readFailed(let msg, let code) {
+                 print("  Sensor '\(sensor.name)' (\(sensor.key)) falhou na leitura (readFailed: \(msg), code: \(code)).")
+            } catch SMCError.unknownFormat {
+                print("  Sensor '\(sensor.name)' (\(sensor.key)) tem formato desconhecido.")
+            } catch {
+                print("  Sensor '\(sensor.name)' (\(sensor.key)) falhou com erro desconhecido: \(error).")
+            }
+        }
+        print("HardwareMonitor: Varredura de sensores concluída. \(available.count) sensores disponíveis de \(HardwareMonitor.potentialSensors.count) potenciais.")
+        return available
+    }
 }
 
 // Função auxiliar para mostrar alerta de erro SMC e terminar

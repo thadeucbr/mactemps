@@ -26,8 +26,20 @@ class PreferencesViewController: NSViewController {
         // Obtém a referência ao HardwareMonitor
         if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
             self.hardwareMonitor = appDelegate.hardwareMonitor
+            // Agora obtemos os sensores que estão realmente disponíveis
+            if let monitor = self.hardwareMonitor {
+                self.availableSensors = monitor.getAvailableSensors()
+                print("PreferencesViewController: Carregados \(self.availableSensors.count) sensores disponíveis.")
+            } else {
+                self.availableSensors = [] // Nenhum monitor, nenhum sensor
+                print("PreferencesViewController: HardwareMonitor não encontrado. Nenhum sensor disponível.")
+                // Considerar mostrar um alerta ou mensagem na UI se o monitor não estiver disponível
+            }
+        } else {
+            self.availableSensors = []
+            print("PreferencesViewController: AppDelegate não encontrado. Nenhum sensor disponível.")
         }
-        self.availableSensors = HardwareMonitor.knownSensors // Usamos a lista estática
+        // self.availableSensors = HardwareMonitor.potentialSensors // Comentado: Usar a lista filtrada
 
         setupUI()
         populatePopUpButtons()
