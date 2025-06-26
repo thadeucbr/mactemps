@@ -142,31 +142,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     do {
                         let temp = try monitor.readTemperature(key: currentSensor.key)
                         let tempString = "\(String(format: "%.0f", temp))°"
-                        tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: tempString))
-                        print("Lido: \(currentSensor.name) (\(key)): \(tempString) para slot \(index)")
+                        // Inclui o iconName do sensor ao criar TemperatureDisplayInfo
+                        tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: tempString, iconName: currentSensor.iconName))
+                        print("Lido: \(currentSensor.name) (\(key)) Icon: \(currentSensor.iconName) Temp: \(tempString) para slot \(index)")
                     } catch {
                         print("Falha ao ler \(currentSensor.name) (\(key)) para slot \(index): \(error)")
-                        // Se a leitura falhar, mas a chave é conhecida, mostrar "ER°"
-                        tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "ER°"))
+                        // Se a leitura falhar, mas a chave é conhecida, mostrar "ER°" e o ícone do sensor
+                        tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "ER°", iconName: currentSensor.iconName))
                     }
                 } else {
                     // A chave salva não corresponde a nenhum sensor em potentialSensors.
-                    // Isso é mais sério, talvez um erro de digitação na chave ou dados antigos.
                     print("Sensor com chave '\(key)' não encontrado na lista potentialSensors para slot \(index).")
-                    tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "??°"))
+                    tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "??°", iconName: nil)) // Sem ícone se o sensor é desconhecido
                 }
             } else {
                 // Nenhuma chave de sensor configurada para este slot
-                tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "--°"))
+                tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "--°", iconName: nil)) // Sem ícone para slot vazio
             }
         }
 
-        // Garante que temos o número certo de entradas para o layout, mesmo que algumas chaves não sejam encontradas
-        // ou não configuradas. A StatusItemView já lida com desenhar placeholders se a lista for curta,
-        // mas é bom ser explícito.
+        // Garante que temos o número certo de entradas para o layout.
         let expectedCount = view.currentLayout.numberOfTemperatures
         while tempsToShow.count < expectedCount {
-            tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "--°"))
+            // Adiciona placeholders com nenhum ícone.
+            tempsToShow.append(StatusItemView.TemperatureDisplayInfo(stringValue: "--°", iconName: nil))
         }
 
         view.temperaturesToDisplay = Array(tempsToShow.prefix(expectedCount))

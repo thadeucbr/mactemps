@@ -6,6 +6,7 @@ struct Sensor: Hashable, Identifiable {
     let id = UUID() // Para conformar com Identifiable, útil para listas em UI se necessário
     let key: String   // Chave SMC (FourCharCode)
     let name: String  // Nome amigável para o usuário
+    let iconName: String // Nome do ícone para este sensor (ex: "cpu_icon")
 }
 
 class HardwareMonitor {
@@ -14,22 +15,23 @@ class HardwareMonitor {
     // Referência para chaves comuns: https://github.com/exelban/stats/blob/master/shared/modules/sensors/types.swift
     // Esta lista representa todos os sensores que *potencialmente* podem existir.
     // A lista de sensores *realmente disponíveis* será determinada em tempo de execução.
+    // Ícones sugeridos: "cpu_icon", "gpu_icon", "memory_icon", "storage_icon", "system_icon" (genérico)
     static let potentialSensors: [Sensor] = [
-        Sensor(key: "TC0P", name: "Proximidade da CPU"),
-        Sensor(key: "TC0D", name: "Diodo da CPU"),
-        Sensor(key: "TC0H", name: "Dissipador da CPU"),
-        Sensor(key: "TC1C", name: "Núcleo CPU 1"),
-        Sensor(key: "TC2C", name: "Núcleo CPU 2"),
-        Sensor(key: "TCGC", name: "Gráficos da CPU"),
-        Sensor(key: "TG0P", name: "Proximidade da GPU"),
-        Sensor(key: "TG0D", name: "Diodo da GPU"),
-        Sensor(key: "TG0H", name: "Dissipador da GPU"),
-        Sensor(key: "TM0P", name: "Proximidade da Memória"),
-        Sensor(key: "TM0S", name: "Slot de Memória 1"),
-        Sensor(key: "TS0S", name: "Controlador SSD"),
-        Sensor(key: "TA0P", name: "Temperatura Ambiente"),
-        Sensor(key: "Th0H", name: "Heatpipe Principal 1"),
-        Sensor(key: "Tp0P", name: "Proximidade da Fonte")
+        Sensor(key: "TC0P", name: "Proximidade da CPU", iconName: "cpu_icon"),
+        Sensor(key: "TC0D", name: "Diodo da CPU", iconName: "cpu_icon"),
+        Sensor(key: "TC0H", name: "Dissipador da CPU", iconName: "cpu_icon"),
+        Sensor(key: "TC1C", name: "Núcleo CPU 1", iconName: "cpu_icon"),
+        Sensor(key: "TC2C", name: "Núcleo CPU 2", iconName: "cpu_icon"),
+        Sensor(key: "TCGC", name: "Gráficos da CPU", iconName: "cpu_icon"), // Pode ser "gpu_icon" se for iGPU
+        Sensor(key: "TG0P", name: "Proximidade da GPU", iconName: "gpu_icon"),
+        Sensor(key: "TG0D", name: "Diodo da GPU", iconName: "gpu_icon"),
+        Sensor(key: "TG0H", name: "Dissipador da GPU", iconName: "gpu_icon"),
+        Sensor(key: "TM0P", name: "Proximidade da Memória", iconName: "memory_icon"),
+        Sensor(key: "TM0S", name: "Slot de Memória 1", iconName: "memory_icon"),
+        Sensor(key: "TS0S", name: "Controlador SSD", iconName: "storage_icon"),
+        Sensor(key: "TA0P", name: "Temperatura Ambiente", iconName: "system_icon"),
+        Sensor(key: "Th0H", name: "Heatpipe Principal 1", iconName: "system_icon"),
+        Sensor(key: "Tp0P", name: "Proximidade da Fonte", iconName: "system_icon") // Ou um ícone de energia?
     ]
 
     private var connection: io_connect_t = 0

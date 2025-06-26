@@ -4,6 +4,7 @@ class StatusItemView: NSView {
 
     struct TemperatureDisplayInfo {
         let stringValue: String
+        let iconName: String? // Nome do ícone (ex: "cpu_icon") ou nil
         // Futuramente, podemos adicionar coordenadas ou quadrante aqui se necessário
     }
 
@@ -90,50 +91,111 @@ class StatusItemView: NSView {
         paragraphStyle.alignment = .center
 
         let fontSize: CGFloat
+        let iconSize: CGFloat
+        let iconPadding: CGFloat = 2 // Espaço entre ícone e texto
+
         switch currentLayout {
         case .singleQuadrant:
             fontSize = 13
+            iconSize = 14
         case .dualQuadrant, .quadQuadrant:
-            fontSize = 10 // Fonte menor para mais informações
+            fontSize = 10
+            iconSize = 11 // Ícone menor para layouts mais densos
         }
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular),
-            .foregroundColor: NSColor.labelColor, // Adapta-se ao modo light/dark
+            .foregroundColor: NSColor.labelColor,
             .paragraphStyle: paragraphStyle
         ]
+
+        // Função auxiliar para desenhar um item (ícone + texto)
+        func drawItem(tempInfo: TemperatureDisplayInfo, inRect itemRect: CGRect) {
+            var textOriginX = itemRect.origin.x
+            var textWidth = itemRect.width
+
+            if let iconName = tempInfo.iconName, let icon = NSImage(named: iconName) {
+                // Se for SFSymbol, configurar para template e cor do texto
+                // No macOS 10.15, SF Symbols não são diretamente suportados da mesma forma que no macOS 11+.
+                // NSImage(systemSymbolName:) está disponível a partir do macOS 11.
+                // Para versões anteriores, precisaríamos de assets PNG/PDF ou outra biblioteca de ícones.
+                // Vamos assumir que os ícones nomeados em Assets.xcassets já estão corretos (e podem ser template).
+                // A lógica de `icon.isTemplate = true` pode ser mantida se os assets forem configurados como template.
+                if icon.isTemplate { // Verifica se o asset é um template
+                    // Não precisa definir icon.isTemplate = true aqui, pois já deve estar no asset.
+                    // A cor será aplicada durante o desenho.
+                }
+
+                let iconRectWidth = iconSize
+                let iconRectHeight = iconSize
+                let iconY = itemRect.origin.y + (itemRect.height - iconRectHeight) / 2 // Centraliza o ícone verticalmente
+                let iconRect = CGRect(x: itemRect.origin.x + iconPadding, y: iconY, width: iconRectWidth, height: iconRectHeight)
+
+                // Salva o estado gráfico atual
+                NSGraphicsContext.current?.saveGraphicsState()
+
+                if icon.isTemplate {
+                    // Define a cor de preenchimento para o ícone template
+                    NSColor.labelColor.set() // Usa a cor do texto padrão
+                }
+
+                // Desenha o ícone
+                icon.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1.0, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high.rawValue])
+
+                // Restaura o estado gráfico
+                NSGraphicsContext.current?.restoreGraphicsState()
+
+
+                textOriginX += iconRectWidth + iconPadding * 2 // Ajusta a origem do texto
+                textWidth -= (iconRectWidth + iconPadding * 2) // Ajusta a largura do texto
+            }
+
+            // Ajusta o alinhamento do texto para a esquerda se houver ícone, ou centralizado se não houver.
+            let tempParagraphStyle = paragraphStyle.mutableCopy() as! NSMutableParagraphStyle
+            if tempInfo.iconName != nil {
+                 // Adiciona um pequeno espaço à esquerda para o texto não colar no ícone
+                textOriginX += iconPadding
+                textWidth -= iconPadding
+                tempParagraphStyle.alignment = .left
+            } else {
+                tempParagraphStyle.alignment = .center
+            }
+
+            let textAttributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: tempParagraphStyle
+            ]
+
+            let textRect = CGRect(x: textOriginX, y: itemRect.origin.y + (itemRect.height - fontSize - 1) / 2, width: textWidth, height: fontSize + 2)
+            (tempInfo.stringValue as NSString).draw(with: textRect, options: .usesLineFragmentOrigin, attributes: textAttributes)
+        }
+
 
         // Desenha as temperaturas com base no layout
         switch currentLayout {
         case .singleQuadrant:
             if let tempInfo = temperaturesToDisplay.first {
-                let textRect = CGRect(x: 0, y: (bounds.height - fontSize - 1) / 2, width: bounds.width, height: fontSize + 2)
-                (tempInfo.stringValue as NSString).draw(with: textRect, options: .usesLineFragmentOrigin, attributes: attributes)
+                drawItem(tempInfo: tempInfo, inRect: bounds)
             }
         case .dualQuadrant:
             let itemWidth = bounds.width / 2
             for (index, tempInfo) in temperaturesToDisplay.prefix(2).enumerated() {
-                let textRect = CGRect(x: itemWidth * CGFloat(index), y: (bounds.height - fontSize - 1) / 2, width: itemWidth, height: fontSize + 2)
-                (tempInfo.stringValue as NSString).draw(with: textRect, options: .usesLineFragmentOrigin, attributes: attributes)
+                let rect = CGRect(x: itemWidth * CGFloat(index), y: 0, width: itemWidth, height: bounds.height)
+                drawItem(tempInfo: tempInfo, inRect: rect)
             }
         case .quadQuadrant:
             let itemWidth = bounds.width / 2
             let itemHeight = bounds.height / 2
             for (index, tempInfo) in temperaturesToDisplay.prefix(4).enumerated() {
                 let x = (index % 2 == 0) ? 0 : itemWidth
-                // let yOffset = (bounds.height - (fontSize * 2 + 2)) / 2 // Centraliza verticalmente o bloco 2x2
-                // let y = (index < 2) ? itemHeight + yOffset - ( (itemHeight - fontSize) / 2 + fontSize ) : yOffset + ( (itemHeight - fontSize) / 2 )
-                // A variável 'y' e 'yOffset' não estavam sendo usadas para calcular textRect.y, que usa adjustedY.
+                // Ajuste para o sistema de coordenadas do drawItem
+                // Linha superior (índices 0, 1) deve ter y = itemHeight
+                // Linha inferior (índices 2, 3) deve ter y = 0
+                let yCoord = (index < 2) ? itemHeight : 0
 
-                // Ajuste fino do y para alinhar melhor as duas linhas
-                let adjustedY : CGFloat
-                if (index < 2) { // Linha superior
-                    adjustedY = itemHeight + (itemHeight - fontSize - 1) / 2
-                } else { // Linha inferior
-                    adjustedY = (itemHeight - fontSize - 1) / 2
-                }
-                let textRect = CGRect(x: x, y: adjustedY , width: itemWidth, height: fontSize + 2)
-                (tempInfo.stringValue as NSString).draw(with: textRect, options: .usesLineFragmentOrigin, attributes: attributes)
+                let rect = CGRect(x: x, y: CGFloat(yCoord), width: itemWidth, height: itemHeight)
+                drawItem(tempInfo: tempInfo, inRect: rect)
             }
         }
     }
