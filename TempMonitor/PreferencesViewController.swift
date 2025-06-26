@@ -105,7 +105,7 @@ class PreferencesViewController: NSViewController {
     }
 
     private func populatePopUpButtons() {
-        let noneSensor = Sensor(key: "", name: "Nenhum") // Opção para desabilitar um quadrante
+        let noneSensor = Sensor(key: "", name: "Nenhum", iconName: "system_icon") // Opção para desabilitar um quadrante
 
         // Obtém todas as chaves de sensores atualmente selecionadas em *outros* popups.
         var currentlySelectedKeysInOtherPopUps: Set<String> = []

@@ -103,11 +103,8 @@ class StatusItemView: NSView {
             iconSize = 11 // Ícone menor para layouts mais densos
         }
 
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular),
-            .foregroundColor: NSColor.labelColor,
-            .paragraphStyle: paragraphStyle
-        ]
+        // A variável 'attributes' foi removida daqui pois não era utilizada globalmente no método draw.
+        // Os atributos de texto são agora definidos localmente na função 'drawItem' e 'drawPlaceholder'.
 
         // Função auxiliar para desenhar um item (ícone + texto)
         func drawItem(tempInfo: TemperatureDisplayInfo, inRect itemRect: CGRect) {
@@ -153,7 +150,7 @@ class StatusItemView: NSView {
             // Ajusta o alinhamento do texto para a esquerda se houver ícone, ou centralizado se não houver.
             let tempParagraphStyle = paragraphStyle.mutableCopy() as! NSMutableParagraphStyle
             if tempInfo.iconName != nil {
-                 // Adiciona um pequeno espaço à esquerda para o texto não colar no ícone
+                // Adiciona um pequeno espaço à esquerda para o texto não colar no ícone
                 textOriginX += iconPadding
                 textWidth -= iconPadding
                 tempParagraphStyle.alignment = .left
@@ -161,6 +158,7 @@ class StatusItemView: NSView {
                 tempParagraphStyle.alignment = .center
             }
 
+            // Os atributos de texto são definidos aqui, removendo a declaração não utilizada de 'attributes' no escopo de draw(_dirtyRect)
             let textAttributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular),
                 .foregroundColor: NSColor.labelColor,
@@ -173,6 +171,8 @@ class StatusItemView: NSView {
 
 
         // Desenha as temperaturas com base no layout
+        // A variável 'attributes' que foi removida estava no escopo de 'draw(_dirtyRect)' e não aqui.
+        // A remoção correta deve ser no início do método draw.
         switch currentLayout {
         case .singleQuadrant:
             if let tempInfo = temperaturesToDisplay.first {
