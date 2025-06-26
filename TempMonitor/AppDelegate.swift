@@ -17,13 +17,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             hardwareMonitor = try HardwareMonitor()
             print("HardwareMonitor inicializado com sucesso.")
 
-            // Agora que o monitor está pronto, obtenha os sensores disponíveis
-            let availableSensors = hardwareMonitor!.getAvailableSensors()
-            print("AppDelegate: \(availableSensors.count) sensores disponíveis detectados.")
+            // 1. Registra as chaves de todos os sensores potenciais como "selecionadas pelo usuário" por padrão,
+            //    SE nenhuma configuração existir ainda. Isso garante que, na primeira execução, todos os sensores
+            //    sejam considerados para monitoramento.
+            let potentialSensorKeys = HardwareMonitor.potentialSensors.map { $0.key }
+            AppSettings.shared.registerDefaultUserSelectedSensorKeys(potentialSensorKeys: potentialSensorKeys)
+            print("AppDelegate: Chaves de sensor selecionadas pelo usuário (padrão, se aplicável) registradas.")
 
-            // Registra os sensores padrão (se ainda não estiverem definidos),
-            // passando os sensores disponíveis.
-            AppSettings.shared.registerDefaultSensorKeys(availableSensors: availableSensors)
+            // 2. Agora que `userSelectedSensorKeys` está definido (ou carregado),
+            //    `hardwareMonitor.getAvailableSensors()` irá respeitá-lo.
+            let initiallyAvailableSensors = hardwareMonitor!.getAvailableSensors()
+            print("AppDelegate: \(initiallyAvailableSensors.count) sensores inicialmente disponíveis e selecionados detectados.")
+
+            // 3. Registra os sensores padrão para os quadrantes (se ainda não estiverem definidos),
+            //    passando os sensores que estão *realmente disponíveis e selecionados pelo usuário*.
+            AppSettings.shared.registerDefaultSensorKeys(availableSensors: initiallyAvailableSensors)
+            print("AppDelegate: Sensores padrão para quadrantes (padrão, se aplicável) registrados.")
 
             // Configura o MenuManager
             menuManager = MenuManager(appDelegate: self)
@@ -90,13 +99,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                                                object: nil)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(handleSensorSettingsChange(_:)),
-                                               name: .sensorSettingsDidChange,
+                                               name: .sensorSettingsDidChange, // Mudanças na atribuição de quadrantes
+                                               object: nil)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleUserSelectedSensorsChange(_:)),
+                                               name: .userSelectedSensorsDidChange, // Mudanças na seleção de sensores ativos
                                                object: nil)
     }
 
     private func removeObservers() {
-        NotificationCenter.default.removeObserver(self, name: .layoutDidChange, object: nil)
-        NotificationCenter.default.removeObserver(self, name: .sensorSettingsDidChange, object: nil)
+        NotificationCenter.default.removeObserver(self) // Remove todos os observadores para este objeto
     }
 
     @objc func handleLayoutChange(_ notification: Notification) {
@@ -115,8 +127,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func handleSensorSettingsChange(_ notification: Notification) {
         print("Notificação: Configurações de sensor mudaram.")
         // Opcionalmente, podemos verificar notification.object se for útil (ex: qual quadrante mudou)
+        // Esta notificação é para quando um sensor é atribuído/removido de um quadrante.
+        // A lista de sensores *disponíveis* não mudou necessariamente, apenas como eles são exibidos.
+        print("AppDelegate: Notificação de mudança nas configurações de sensor (atribuição de quadrante) recebida.")
         updateStatusItemViewWithCurrentSettings()
     }
+
+    @objc func handleUserSelectedSensorsChange(_ notification: Notification) {
+        // Esta notificação é para quando o usuário marca/desmarca sensores na lista de monitoramento.
+        // Isso AFETA quais sensores são considerados "disponíveis".
+        print("AppDelegate: Notificação de mudança nos sensores selecionados pelo usuário recebida.")
+
+        // 1. A lista de `availableSensors` no `PreferencesViewController` (se aberta)
+        //    será atualizada por seu próprio observador para `.userSelectedSensorsDidChange`.
+        //    Ela chamará `refreshAvailableSensorsForQuadrants()`.
+
+        // 2. As atribuições de quadrante podem precisar ser invalidadas se um sensor
+        //    atribuído foi desmarcado. Isso já é tratado em `PreferencesViewController.sensorCheckboxChanged()`.
+        //    Se um sensor atribuído a um quadrante é desmarcado, `sensorCheckboxChanged` define
+        //    a chave desse quadrante para `nil` em `AppSettings`, o que dispara `sensorSettingsDidChange`.
+        //    Portanto, `handleSensorSettingsChange` será chamado, que por sua vez chama
+        //    `updateStatusItemViewWithCurrentSettings`.
+
+        // 3. O principal aqui é garantir que a StatusItemView seja atualizada,
+        //    pois os sensores que ela estava exibindo podem não estar mais "ativos".
+        updateStatusItemViewWithCurrentSettings()
+
+        // 4. Se a janela de Preferências estiver aberta, ela se auto-atualizará.
+        //    Se não estiver aberta, as mudanças serão refletidas na próxima vez que for aberta.
+    }
+
 
     // Renomeada de updateStatusItemViewWithTestData para updateStatusItemViewWithCurrentSettings
     func updateStatusItemViewWithCurrentSettings() {

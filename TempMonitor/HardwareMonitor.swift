@@ -376,24 +376,31 @@ class HardwareMonitor {
     // Método para obter apenas os sensores que estão realmente disponíveis e legíveis
     func getAvailableSensors() -> [Sensor] {
         var available: [Sensor] = []
-        print("HardwareMonitor: Iniciando varredura de sensores disponíveis...")
-        for sensor in HardwareMonitor.potentialSensors {
+        let selectedKeys = AppSettings.shared.userSelectedSensorKeys
+        let sensorsToScan = HardwareMonitor.potentialSensors.filter { selectedKeys.contains($0.key) }
+
+        print("HardwareMonitor: Iniciando varredura de sensores disponíveis (filtrados pela seleção do usuário)...")
+        print("HardwareMonitor: Total de sensores potenciais: \(HardwareMonitor.potentialSensors.count)")
+        print("HardwareMonitor: Chaves selecionadas pelo usuário: \(selectedKeys.count)")
+        print("HardwareMonitor: Sensores para escanear (após filtro inicial): \(sensorsToScan.count)")
+
+        for sensor in sensorsToScan {
             do {
                 // Tenta ler a temperatura. Se não houver erro, o sensor está disponível.
                 _ = try readTemperature(key: sensor.key)
                 available.append(sensor)
-                print("  Sensor '\(sensor.name)' (\(sensor.key)) está disponível.")
+                print("  Sensor '\(sensor.name)' (\(sensor.key)) está disponível e selecionado.")
             } catch SMCError.keyNotFound {
-                print("  Sensor '\(sensor.name)' (\(sensor.key)) não encontrado (keyNotFound).")
+                print("  Sensor '\(sensor.name)' (\(sensor.key)) não encontrado (keyNotFound), embora selecionado pelo usuário.")
             } catch SMCError.readFailed(let msg, let code) {
-                 print("  Sensor '\(sensor.name)' (\(sensor.key)) falhou na leitura (readFailed: \(msg), code: \(code)).")
+                 print("  Sensor '\(sensor.name)' (\(sensor.key)) falhou na leitura (readFailed: \(msg), code: \(code)), embora selecionado pelo usuário.")
             } catch SMCError.unknownFormat {
-                print("  Sensor '\(sensor.name)' (\(sensor.key)) tem formato desconhecido.")
+                print("  Sensor '\(sensor.name)' (\(sensor.key)) tem formato desconhecido, embora selecionado pelo usuário.")
             } catch {
-                print("  Sensor '\(sensor.name)' (\(sensor.key)) falhou com erro desconhecido: \(error).")
+                print("  Sensor '\(sensor.name)' (\(sensor.key)) falhou com erro desconhecido: \(error), embora selecionado pelo usuário.")
             }
         }
-        print("HardwareMonitor: Varredura de sensores concluída. \(available.count) sensores disponíveis de \(HardwareMonitor.potentialSensors.count) potenciais.")
+        print("HardwareMonitor: Varredura de sensores concluída. \(available.count) sensores disponíveis e selecionados de \(sensorsToScan.count) escaneados (que foram filtrados de \(HardwareMonitor.potentialSensors.count) potenciais).")
         return available
     }
 }

@@ -3,6 +3,7 @@ import Foundation
 // Notificação para quando as configurações de sensores mudarem
 extension Notification.Name {
     static let sensorSettingsDidChange = Notification.Name("sensorSettingsDidChangeNotification")
+    static let userSelectedSensorsDidChange = Notification.Name("userSelectedSensorsDidChangeNotification") // Nova notificação
 }
 
 class AppSettings {
@@ -16,6 +17,31 @@ class AppSettings {
         static let sensorKeyForQuadrant2 = "appSettingSensorKeyQ2"
         static let sensorKeyForQuadrant3 = "appSettingSensorKeyQ3"
         static let sensorKeyForQuadrant4 = "appSettingSensorKeyQ4"
+        static let userSelectedSensorKeys = "appSettingUserSelectedSensorKeys" // Nova chave
+    }
+
+    // MARK: - User Selected Sensors
+    var userSelectedSensorKeys: Set<String> {
+        get {
+            // Carrega as chaves salvas. Se não houver nada salvo (primeira execução), retorna um conjunto vazio.
+            // A lógica de inicialização padrão será tratada no AppDelegate ou similar,
+            // onde temos acesso à lista de `potentialSensors`.
+            let savedKeys = UserDefaults.standard.array(forKey: Keys.userSelectedSensorKeys) as? [String]
+            return Set(savedKeys ?? [])
+        }
+        set {
+            UserDefaults.standard.set(Array(newValue), forKey: Keys.userSelectedSensorKeys)
+            NotificationCenter.default.post(name: .userSelectedSensorsDidChange, object: nil)
+        }
+    }
+
+    // Método para registrar os padrões iniciais para userSelectedSensorKeys
+    // Deve ser chamado uma vez, por exemplo, pelo AppDelegate, se nenhuma configuração for encontrada.
+    func registerDefaultUserSelectedSensorKeys(potentialSensorKeys: [String]) {
+        if UserDefaults.standard.object(forKey: Keys.userSelectedSensorKeys) == nil {
+            print("AppSettings: Registrando conjunto padrão de userSelectedSensorKeys (todos os potenciais).")
+            userSelectedSensorKeys = Set(potentialSensorKeys)
+        }
     }
 
     // MARK: - Layout Setting
