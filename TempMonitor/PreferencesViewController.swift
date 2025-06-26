@@ -106,33 +106,96 @@ class PreferencesViewController: NSViewController {
 
     private func populatePopUpButtons() {
         let noneSensor = Sensor(key: "", name: "Nenhum") // Opção para desabilitar um quadrante
-        let sensorsWithNone = [noneSensor] + availableSensors
 
-        for popUpButton in quadrantPopUpButtons {
-            popUpButton.removeAllItems()
-            for sensor in sensorsWithNone {
-                popUpButton.addItem(withTitle: sensor.name)
-                // Armazena a chave do sensor no item para fácil recuperação
-                popUpButton.lastItem?.representedObject = sensor.key
+        // Obtém todas as chaves de sensores atualmente selecionadas em *outros* popups.
+        var currentlySelectedKeysInOtherPopUps: Set<String> = []
+        for (idx, btn) in quadrantPopUpButtons.enumerated() {
+            // Se o botão já tem uma seleção (de loadCurrentSelections ou de uma mudança anterior)
+            if let selectedKey = btn.selectedItem?.representedObject as? String, !selectedKey.isEmpty {
+                 // Não adicionamos a chave do popup que estamos prestes a popular
+                 // Este loop roda antes de popular cada popup, então as seleções
+                 // dos outros já estão (ou deveriam estar) definidas.
+                 // No entanto, esta função é chamada uma vez para popular todos.
+                 // Precisamos de uma lógica diferente para "on change" ou repopular todos.
+
+                 // Para a lógica inicial de popular todos:
+                 // Quando populamos o popup X, as seleções dos popups Y, Z, W são relevantes.
+                 // Melhor obter as seleções salvas de AppSettings diretamente para determinar
+                 // o que está "em uso" pelos outros.
+            }
+        }
+        // Vamos refazer a lógica de popular para cada botão individualmente,
+        // considerando as seleções dos outros.
+
+        for popUpButtonToPopulate in quadrantPopUpButtons {
+            popUpButtonToPopulate.removeAllItems()
+            popUpButtonToPopulate.addItem(withTitle: noneSensor.name)
+            popUpButtonToPopulate.lastItem?.representedObject = noneSensor.key
+
+            let currentQuadrantTag = popUpButtonToPopulate.tag
+            var otherSelectedKeys: Set<String> = []
+            for otherButton in quadrantPopUpButtons {
+                if otherButton.tag == currentQuadrantTag { continue } // Não considera a si mesmo
+
+                // Obtém a chave selecionada do AppSettings para o outro botão
+                if let otherKey = AppSettings.shared.sensorKey(forQuadrant: otherButton.tag), !otherKey.isEmpty {
+                    otherSelectedKeys.insert(otherKey)
+                }
+            }
+
+            // Sensor atualmente selecionado para ESTE popup (se houver)
+            let currentSensorKeyForThisPopUp = AppSettings.shared.sensorKey(forQuadrant: currentQuadrantTag)
+
+            for sensor in availableSensors {
+                // O sensor pode ser adicionado se:
+                // 1. Não estiver selecionado em NENHUM outro popup.
+                // OU
+                // 2. For o sensor ATUALMENTE selecionado para ESTE popup (para que apareça na lista).
+                if !otherSelectedKeys.contains(sensor.key) || sensor.key == currentSensorKeyForThisPopUp {
+                    popUpButtonToPopulate.addItem(withTitle: sensor.name)
+                    popUpButtonToPopulate.lastItem?.representedObject = sensor.key
+                }
             }
         }
     }
 
+
     private func loadCurrentSelections() {
         for popUpButton in quadrantPopUpButtons {
             let quadrant = popUpButton.tag
-            if let selectedKey = AppSettings.shared.sensorKey(forQuadrant: quadrant) {
-                if selectedKey.isEmpty { // Representa "Nenhum"
-                    popUpButton.selectItem(withTitle: "Nenhum")
-                } else if let index = availableSensors.firstIndex(where: { $0.key == selectedKey }) {
-                    // availableSensors não inclui "Nenhum", então o índice é +1
-                    popUpButton.selectItem(at: index + 1)
+            let savedKey = AppSettings.shared.sensorKey(forQuadrant: quadrant)
+
+            if let key = savedKey, !key.isEmpty {
+                // Verifica se a chave salva corresponde a um sensor *disponível*
+                if availableSensors.contains(where: { $0.key == key }) {
+                    // Tenta selecionar o item. O item pode não existir no popup se
+                    // populatePopUpButtons já o filtrou por estar em uso em outro lugar
+                    // (embora a lógica atual de populatePopUpButtons deve permitir o item atual).
+                    var foundAndSelected = false
+                    for item in popUpButton.itemArray {
+                        if let itemKey = item.representedObject as? String, itemKey == key {
+                            popUpButton.select(item)
+                            foundAndSelected = true
+                            break
+                        }
+                    }
+                    if !foundAndSelected {
+                        // Se não foi encontrado (ex: estava em uso por outro e foi filtrado), seleciona "Nenhum"
+                        // Isso pode acontecer se as configurações salvas tiverem duplicatas e a UI agora as impede.
+                        print("Preferências: Chave salva '\(key)' para Q\(quadrant) não encontrada no popup (possivelmente em uso ou indisponível). Definindo para Nenhum.")
+                        popUpButton.selectItem(withTitle: "Nenhum")
+                        // Opcional: remover a configuração inválida de AppSettings
+                        // AppSettings.shared.setSensorKey(nil, forQuadrant: quadrant)
+                    }
                 } else {
-                    // Chave salva não encontrada (talvez um sensor removido?), seleciona "Nenhum"
+                    // Chave salva refere-se a um sensor não disponível (não passou na validação inicial)
+                    print("Preferências: Chave salva '\(key)' para Q\(quadrant) refere-se a um sensor não disponível. Definindo para Nenhum.")
                     popUpButton.selectItem(withTitle: "Nenhum")
+                    // Opcional: remover a configuração inválida de AppSettings
+                    AppSettings.shared.setSensorKey(nil, forQuadrant: quadrant)
                 }
             } else {
-                // Nenhuma chave salva, seleciona "Nenhum"
+                // Nenhuma chave salva ou a chave é vazia ("Nenhum")
                 popUpButton.selectItem(withTitle: "Nenhum")
             }
         }
@@ -150,6 +213,11 @@ class PreferencesViewController: NSViewController {
         // A notificação .sensorSettingsDidChange será postada por AppSettings
         // e o AppDelegate irá lidar com a atualização da StatusItemView.
         print("Preferências: Quadrante \(quadrant) definido para sensor key: '\(sensorKey ?? "nil")'")
+
+        // Após uma mudança, repopular todos os popups para refletir as novas restrições
+        // e então recarregar as seleções para garantir que a UI esteja consistente.
+        populatePopUpButtons()
+        loadCurrentSelections()
     }
 
     @objc func handleSensorSettingsChange(_ notification: Notification) {
