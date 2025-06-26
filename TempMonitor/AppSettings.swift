@@ -16,6 +16,8 @@ class AppSettings {
         static let sensorKeyForQuadrant2 = "appSettingSensorKeyQ2"
         static let sensorKeyForQuadrant3 = "appSettingSensorKeyQ3"
         static let sensorKeyForQuadrant4 = "appSettingSensorKeyQ4"
+        static let showInTouchBar = "appSettingShowInTouchBar"
+        static let touchBarSensorKey = "appSettingTouchBarSensorKey"
     }
 
     // MARK: - Layout Setting
@@ -77,6 +79,33 @@ class AppSettings {
         NotificationCenter.default.post(name: .sensorSettingsDidChange, object: quadrant) // Envia o quadrante modificado
     }
 
+    // MARK: - Touch Bar Settings
+
+    var showInTouchBar: Bool {
+        get {
+            // Padrão para true se não estiver definido
+            return UserDefaults.standard.object(forKey: Keys.showInTouchBar) as? Bool ?? true
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Keys.showInTouchBar)
+            // Postar uma notificação se outras partes do app precisarem reagir a isso.
+            // Por exemplo, para adicionar/remover o item da Touch Bar dinamicamente.
+            // NotificationCenter.default.post(name: .touchBarSettingsDidChange, object: nil)
+        }
+    }
+
+    var touchBarSensorKey: String? {
+        get {
+            return UserDefaults.standard.string(forKey: Keys.touchBarSensorKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Keys.touchBarSensorKey)
+            // Postar notificação para que o AppDelegate possa atualizar qual sensor é exibido.
+            // NotificationCenter.default.post(name: .touchBarSettingsDidChange, object: nil)
+        }
+    }
+
+
     // MARK: - Default Sensor Assignments
 
     // Define os sensores padrão se nenhum estiver configurado
@@ -135,6 +164,13 @@ class AppSettings {
             setSensorKey(defaultQ2Key, forQuadrant: 2)
             setSensorKey(nil, forQuadrant: 3) // Nenhum por padrão
             setSensorKey(nil, forQuadrant: 4) // Nenhum por padrão
+
+            // Define o sensor padrão para a Touch Bar (usa Q1 se disponível)
+            if UserDefaults.standard.string(forKey: Keys.touchBarSensorKey) == nil {
+                touchBarSensorKey = defaultQ1Key // Pode ser nil se Q1 não foi definido
+                print("AppSettings: Padrão Touch Bar Sensor Key: \(touchBarSensorKey ?? "Nenhum")")
+            }
+            // showInTouchBar já tem seu padrão no getter (true)
         }
     }
 

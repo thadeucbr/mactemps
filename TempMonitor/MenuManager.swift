@@ -45,6 +45,14 @@ class MenuManager: NSObject { // Precisa ser NSObject para ser target de NSMenuI
 
         menu.addItem(NSMenuItem.separator())
 
+        // Item para habilitar/desabilitar Touch Bar
+        let touchBarToggleItem = NSMenuItem(title: "Mostrar na Touch Bar", action: #selector(toggleTouchBar(_:)), keyEquivalent: "")
+        touchBarToggleItem.target = self
+        touchBarToggleItem.state = AppSettings.shared.showInTouchBar ? .on : .off
+        menu.addItem(touchBarToggleItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let preferencesItem = NSMenuItem(title: "Preferências...", action: #selector(openPreferences(_:)), keyEquivalent: ",")
         preferencesItem.target = self
         menu.addItem(preferencesItem)
@@ -93,4 +101,26 @@ class MenuManager: NSObject { // Precisa ser NSObject para ser target de NSMenuI
         print("Ação: Abrir Preferências...")
         appDelegate?.openPreferencesWindow()
     }
+
+    @objc func toggleTouchBar(_ sender: NSMenuItem) {
+        let currentSetting = AppSettings.shared.showInTouchBar
+        AppSettings.shared.showInTouchBar = !currentSetting
+        sender.state = AppSettings.shared.showInTouchBar ? .on : .off
+
+        // Notificar o AppDelegate para atualizar a Touch Bar (adicionar/remover o item)
+        // Isso pode ser feito postando uma notificação ou chamando um método no appDelegate.
+        // Por exemplo, o AppDelegate poderia observar uma notificação .touchBarSettingsDidChange
+        // ou ter um método como appDelegate.updateTouchBarVisibility()
+
+        // Por agora, vamos assumir que o AppDelegate irá verificar AppSettings.shared.showInTouchBar
+        // em seu método de atualização da Touch Bar. Se showInTouchBar for false, ele pode
+        // simplesmente não fornecer o item ou remover a Touch Bar da aplicação.
+        // A maneira mais robusta seria o AppDelegate observar uma nova notificação.
+        NotificationCenter.default.post(name: .touchBarSettingsDidChange, object: nil)
+
+    }
+}
+
+extension Notification.Name {
+    static let touchBarSettingsDidChange = Notification.Name("touchBarSettingsDidChangeNotification")
 }
